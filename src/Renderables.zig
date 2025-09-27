@@ -22,6 +22,33 @@ pub const RenderedVertices = struct {
 
     // Adds a single vertex.
     // For now, each vertex is its own indexed entity.
+
+    pub fn isitthereandwhere(stuff: std.ArrayListUnmanaged(vkr.Vertex), thing: [3]f32) u64 {
+        var i: u64 = 0;
+        for (stuff.items) |item| {
+            i += 1;
+
+            if (item.pos[0] == thing[0] and item.pos[1] == thing[1] and item.pos[2] == thing[2]) {
+                return i;
+            }
+        }
+        std.debug.print("Vertex {any}", .{vkr.Vertex});
+        return 0;
+    }
+
+    pub fn delVertex(
+        self: *RenderedVertices,
+        allocator: std.mem.Allocator,
+        pos: [3]f32,
+    ) !void {
+        std.debug.print("got to rednerables  {any}\n", .{"hello"});
+        _ = allocator;
+        const p: u64 = isitthereandwhere(self.vulkan_vertices, pos);
+        if (p != 0) {
+            _ = self.vulkan_vertices.orderedRemove(p - 1);
+        }
+    }
+
     pub fn addVertex(
         self: *RenderedVertices,
         allocator: std.mem.Allocator,
