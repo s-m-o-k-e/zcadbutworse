@@ -44,6 +44,7 @@ pub const HttpServer = struct {
         router.get("/lines", handlePostLines, .{});
         router.get("/vertices", handlePostVertices, .{});
         router.get("/faces", handlePostFaces, .{});
+        router.get("/delete", handlePostDelete, .{});
 
         const thread = try server.listenInNewThread();
         std.debug.print("Server listening on port 4042\n", .{});
@@ -188,6 +189,71 @@ fn handlePostVertices(server_ctx: *ServerContext, req: *httpz.Request, res: *htt
     try res.json(.{ .message = "Vertex added successfully", .p0 = p0 }, .{});
     // trailing newline in response makes e.g. command-line interactions nicer.
     try res.writer().writeByte('\n');
+}
+
+fn handlePostDelete(server_ctx: *ServerContext, req: *httpz.Request, res: *httpz.Response) !void {
+    std.debug.print("got to here {any}\n", .{"hello"});
+    const query = req.query() catch |err| {
+        std.debug.print("Failed to parse query string: {any}\n", .{err});
+        res.status = 400;
+        try res.json(.{ .err = "Failed to parse query string" }, .{});
+        return;
+    };
+
+    //↑ sets query to the query
+    var points = std.ArrayListUnmanaged(geom.Point){}; //makes list for points
+    defer points.deinit(server_ctx.allocator); //unaloc when finished
+
+    var i: u32 = 0;
+    while (true) {
+        const param_name = std.fmt.allocPrint(server_ctx.allocator, "p{d}", .{i}) catch |err| {
+            std.debug.print("Error allocating memory for param_name: {any}\n", .{err});
+            res.status = 500;
+            try res.json(.{ .err = "Internal server error" }, .{});
+            return;
+        };
+        defer server_ctx.allocator.free(param_name);
+
+        if (query.get(param_name)) |p_str| {
+            const p = parsePoint(p_str) catch |err| {
+                std.debug.print("Failed to parse p{d} '{s}': {any}\n", .{ i, p_str, err });
+                res.status = 400;
+                try res.json(.{ .err = "Invalid format for p{d}. Expected x,y,z", .details = @errorName(err) }, .{});
+                return;
+            };
+            try points.append(server_ctx.allocator, p);
+        } else {
+            break;
+        }
+        i += 1;
+    }
+    std.debug.print("got to my stuff! {any}\n", .{"hello"});
+    if (false) {
+        res.status = 400;
+        try res.json(.{ .err = "err text here" }, .{});
+        return;
+    } //use this to return a problem
+
+    if (points.items.len == 1) {
+        {
+            server_ctx.vertices_mutex.lock();
+            defer server_ctx.vertices_mutex.unlock();
+            const p0 = points.getLast();
+            server_ctx.rendered_vertices.delVertex(server_ctx.allocator, .{ @floatFromInt(p0.x), @floatFromInt(p0.y), @floatFromInt(p0.z) }) catch |err| {
+                std.debug.print("HTTP Server: Error del vert\n", .{err});
+                res.status = 500;
+                try res.json(.{ .err = "some stuff went wrong deleting vert" }, .{});
+                return;
+            };
+            std.debug.print("how did it get here?  {any}\n", .{"hello"});
+            //server_ctx.vertices_updated_signal.store(true, .release);
+
+            res.status = 200;
+            try res.json(.{ .message = "vert delled successfully", .points = points.items }, .{});
+            // trailing newline in response makes e.g. command-line interactions nicer.
+            try res.writer().writeByte('\n');
+        }
+    }
 }
 
 fn handlePostFaces(server_ctx: *ServerContext, req: *httpz.Request, res: *httpz.Response) !void {
